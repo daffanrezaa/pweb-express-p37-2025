@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import authRoutes from './routes/auth.routes';
 import { errorHandler } from './middlewares/errorHandler.middleware';
+import genreRoutes from './routes/genre.routes';
+import bookRoutes from './routes/book.routes';
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +27,8 @@ app.get('/', (req, res) => {
 });
 
 app.use('/auth', authRoutes);
+app.use('/genre', genreRoutes);
+app.use('/books', bookRoutes);
 
 // Error handler (harus di paling bawah)
 app.use(errorHandler);

@@ -65,29 +65,31 @@ export const register = async (req: Request, res: Response) => {
 // Login
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    // 1. Ambil input email dan password, BUKAN username
+    const { email, password } = req.body;
 
-    // Validasi input
-    if (!username || !password) {
+    // 2. Validasi input
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username and password are required'
+        // Pesan error disesuaikan
+        message: 'Email and password are required' 
       });
     }
 
-    // Cari user
+    // 3. Cari user berdasarkan email (karena email unik di DB)
     const user = await prisma.user.findUnique({
-      where: { username }
+      where: { email } // <-- Perubahan di sini
     });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid credentials' // Pesan umum untuk keamanan
       });
     }
 
-    // Verify password
+    // 4. Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
@@ -97,7 +99,7 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // Generate JWT token
+    // 5. Generate JWT token
     const token = jwt.sign(
       {
         id: user.id,
