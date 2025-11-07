@@ -11,8 +11,38 @@ export const createBook = async (req: Request, res: Response) => {
     try {
         const { title, writer, publisher, publication_year, description, price, stock_quantity, genre_id } = req.body;
 
+        // 1. Validasi Field Wajib
         if (!title || !writer || !publisher || !publication_year || !price || !stock_quantity || !genre_id) {
             return res.status(400).json({ success: false, message: 'Semua field wajib diisi.' });
+        }
+
+        const currentYear = 2025;
+        const numPrice = Number(price);
+        const numStock = Number(stock_quantity);
+        const numPubYear = Number(publication_year);
+
+        // 2. Validasi Tahun Publikasi (Tidak boleh lebih dari 2025)
+        if (numPubYear > currentYear) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Publication year cannot be later than ${currentYear}.` 
+            });
+        }
+        
+        // 3. Validasi Harga (Tidak boleh minus)
+        if (numPrice < 0 || isNaN(numPrice)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Price must be a non-negative number.' 
+            });
+        }
+
+        // 4. Validasi Stok (Tidak boleh minus atau desimal)
+        if (numStock < 0 || !Number.isInteger(numStock) || isNaN(numStock)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Stock must be a non-negative integer.' 
+            });
         }
 
         const newBook = await prisma.book.create({
@@ -20,17 +50,16 @@ export const createBook = async (req: Request, res: Response) => {
                 title,
                 writer,
                 publisher,
-                publicationYear: publication_year,
+                publicationYear: numPubYear, // Gunakan yang sudah dikonversi
                 description,
-                price: Number(price),
-                stockQuantity: Number(stock_quantity),
+                price: numPrice, // Gunakan yang sudah dikonversi
+                stockQuantity: numStock, // Gunakan yang sudah dikonversi
                 genreId: genre_id,
             },
         });
 
         res.status(201).json({ success: true, message: 'Book created successfully', data: newBook });
     } catch (error: any) {
-        // Handle unique constraint error (e.g., duplicate title)
         if (error.code === 'P2002') {
              return res.status(400).json({ success: false, message: 'Title already exists.' });
         }

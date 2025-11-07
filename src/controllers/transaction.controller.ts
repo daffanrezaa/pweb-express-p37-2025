@@ -12,107 +12,120 @@ interface OrderItemInput {
 
 // POST /transactions
 export const createTransaction = async (req: AuthRequest, res: Response) => {
-    const userId = req.user?.id;
-    const { items } = req.body as { items: OrderItemInput[] };
+  const userId = req.user?.id;
+  const { items } = req.body as { items: OrderItemInput[] };
 
-    if (!userId) {
-        return res.status(401).json({ success: false, message: 'User not authenticated.' });
-    }
+  if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated.' });
+  }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ success: false, message: 'Items are required' });
-    }
+  if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Items are required' });
+  }
 
-    const stockUpdates = new Map<string, number>();
-    let totalQuantity = 0;
-    let totalPrice = 0;
-    
-    // START VALIDASI STOK & DATA BUKU
-    try {
-        const bookIds = items.map((item) => item.book_id);
-        const books = await prisma.book.findMany({
-            where: { id: { in: bookIds }, deletedAt: null }, 
-        });
-        
-        const availableBooks = new Map<string, Book>(books.map(book => [book.id, book]));
+  const stockUpdates = new Map<string, number>();
+  let totalQuantity = 0;
+  let totalPrice = 0;
+  
+  // START VALIDASI DATA INPUT TAMBAHAN (KUANTITAS TIDAK BOLEH DESIMAL)
+  for (const item of items) {
+      const numQuantity = Number(item.quantity);
+      if (numQuantity <= 0 || !Number.isInteger(numQuantity) || isNaN(numQuantity)) {
+           return res.status(400).json({ 
+              success: false, 
+              message: `Quantity for book ${item.book_id} must be a positive integer.` 
+          });
+      }
+      item.quantity = numQuantity; // Pastikan quantity adalah number (meski sudah dilakukan di type assertion)
+  }
+  // END VALIDASI DATA INPUT TAMBAHAN
 
-        if (books.length !== bookIds.length) {
-            return res.status(404).json({ success: false, message: 'Some books not found or are inactive.' });
-        }
-        
-        for (const item of items) {
-            const book: Book | undefined = availableBooks.get(item.book_id);
-            
-            if (item.quantity <= 0) {
-                 return res.status(400).json({ success: false, message: `Quantity for book ${item.book_id} must be positive.` });
-            }
+  // START VALIDASI STOK & DATA BUKU
+  try {
+      const bookIds = items.map((item) => item.book_id);
+      const books = await prisma.book.findMany({
+          where: { id: { in: bookIds }, deletedAt: null }, 
+      });
+      
+      // ... (sisanya sama, logika validasi stok kritis sudah ada)
+      const availableBooks = new Map<string, Book>(books.map(book => [book.id, book]));
 
-            // VALIDASI STOK KRITIS
-            if (book!.stockQuantity < item.quantity) {
-                return res.status(409).json({ 
-                    success: false,
-                    message: `Stock for '${book!.title}' is insufficient. Available: ${book!.stockQuantity}, Requested: ${item.quantity}.` 
-                });
-            }
+      if (books.length !== bookIds.length) {
+          return res.status(404).json({ success: false, message: 'Some books not found or are inactive.' });
+      }
+      
+      for (const item of items) {
+          const book: Book | undefined = availableBooks.get(item.book_id);
+          
+          // NOTE: Validasi item.quantity <= 0 sudah dilakukan di awal loop.
+          
+          // VALIDASI STOK KRITIS
+          if (book!.stockQuantity < item.quantity) {
+              return res.status(409).json({ 
+                  success: false,
+                  message: `Stock for '${book!.title}' is insufficient. Available: ${book!.stockQuantity}, Requested: ${item.quantity}.` 
+              });
+          }
 
-            totalQuantity += item.quantity;
-            totalPrice += book!.price * item.quantity;
-            stockUpdates.set(book!.id, book!.stockQuantity - item.quantity);
-        }
+          totalQuantity += item.quantity;
+          totalPrice += book!.price * item.quantity;
+          stockUpdates.set(book!.id, book!.stockQuantity - item.quantity);
+      }
 
-    } catch (error) {
-        console.error("Error during initial validation:", error);
-        return res.status(500).json({ success: false, message: "Server error during validation." });
-    }
-    // END VALIDASI STOK & DATA BUKU
+  } catch (error) {
+      console.error("Error during initial validation:", error);
+      return res.status(500).json({ success: false, message: "Server error during validation." });
+  }
+  // END VALIDASI STOK & DATA BUKU
 
-    // START PRISMA TRANSACTION
-    try {
-        const [order] = await prisma.$transaction(async (tx: Prisma.TransactionClient) => { 
-            
-            // 1. Buat Order (Induk) dan Order Items (Detail)
-            const newOrder = await tx.order.create({
-                data: {
-                    userId: userId,
-                    orderItems: {
-                        create: items.map((item) => ({
-                            bookId: item.book_id,
-                            quantity: item.quantity,
-                        })),
-                    },
-                },
-            });
+  // START PRISMA TRANSACTION
+  try {
+      // ... (Semua logika transaksi di sini tetap sama)
+      const [order] = await prisma.$transaction(async (tx: Prisma.TransactionClient) => { 
+          
+          // 1. Buat Order (Induk) dan Order Items (Detail)
+          const newOrder = await tx.order.create({
+              data: {
+                  userId: userId,
+                  orderItems: {
+                      create: items.map((item) => ({
+                          bookId: item.book_id,
+                          quantity: item.quantity,
+                      })),
+                  },
+              },
+          });
 
-            // 2. Kurangi Stok Buku (Update)
-            const stockUpdatePromises = Array.from(stockUpdates.entries()).map(([bookId, newStock]) => 
-                tx.book.update({
-                    where: { id: bookId },
-                    data: { stockQuantity: newStock },
-                })
-            );
+          // 2. Kurangi Stok Buku (Update)
+          const stockUpdatePromises = Array.from(stockUpdates.entries()).map(([bookId, newStock]) => 
+              tx.book.update({
+                  where: { id: bookId },
+                  data: { stockQuantity: newStock },
+              })
+          );
 
-            await Promise.all(stockUpdatePromises);
+          await Promise.all(stockUpdatePromises);
 
-            return [newOrder];
-        });
+          return [newOrder];
+      });
 
-        return res.status(201).json({
-            success: true,
-            message: 'Transaction created successfully and stock updated.',
-            data: {
-                transaction_id: order.id,
-                total_quantity: totalQuantity,
-                total_price: totalPrice,
-            },
-        });
+      return res.status(201).json({
+          success: true,
+          message: 'Transaction created successfully and stock updated.',
+          data: {
+              transaction_id: order.id,
+              total_quantity: totalQuantity,
+              total_price: totalPrice,
+          },
+      });
 
-    } catch (error) {
-        console.error("Error transaction failure:", error);
-        return res.status(500).json({
-            success: false,
-            message: 'Transaction failed. Stock remains unchanged.',
-        });
-    }
+  } catch (error) {
+      console.error("Error transaction failure:", error);
+      return res.status(500).json({
+          success: false,
+          message: 'Transaction failed. Stock remains unchanged.',
+      });
+  }
 };
 
 // GET /transactions (Riwayat Transaksi Pengguna)
