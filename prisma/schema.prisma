@@ -1,3 +1,5 @@
+// schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,8 +12,8 @@ datasource db {
 model User {
   id        String   @id @default(uuid())
   username  String   @unique
-  password  String   
   email     String   @unique
+  password  String
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   orders    Order[]
@@ -20,12 +22,13 @@ model User {
 }
 
 model Genre {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
-  books     Book[]
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  books       Book[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   @@map("genres")
 }
@@ -35,15 +38,19 @@ model Book {
   title           String      @unique
   writer          String
   publisher       String
-  publicationYear Int         @map("publication_year")
-  description     String?
-  price           Int
+  price           Float
   stockQuantity   Int         @map("stock_quantity")
   genreId         String      @map("genre_id")
+  genre           Genre       @relation(fields: [genreId], references: [id])
+  image           String?
+  isbn            String?
+  description     String?     @db.Text
+  publicationYear Int?        @map("publication_year")
+  condition       String?
+  
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
   deletedAt       DateTime?   @map("deleted_at")
-  genre           Genre       @relation(fields: [genreId], references: [id])
   orderItems      OrderItem[]
 
   @@map("books")
@@ -52,23 +59,21 @@ model Book {
 model Order {
   id         String      @id @default(uuid())
   userId     String      @map("user_id")
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
   user       User        @relation(fields: [userId], references: [id])
   orderItems OrderItem[]
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
 
   @@map("orders")
 }
 
 model OrderItem {
-  id        String   @id @default(uuid())
-  quantity  Int
-  orderId   String   @map("order_id")
-  bookId    String   @map("book_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  book      Book     @relation(fields: [bookId], references: [id])
+  id       String @id @default(uuid())
+  orderId  String @map("order_id")
+  order    Order  @relation(fields: [orderId], references: [id])
+  bookId   String @map("book_id")
+  book     Book   @relation(fields: [bookId], references: [id])
+  quantity Int
 
   @@map("order_items")
 }
