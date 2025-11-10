@@ -14,9 +14,9 @@ export const createBook = async (req: Request, res: Response) => {
             price, 
             stock_quantity, 
             genre_id,
-            image,        // NEW
-            isbn,         // NEW
-            condition     // NEW
+            image,
+            isbn,
+            condition
         } = req.body;
 
         // 1. Validasi Field Wajib
@@ -72,9 +72,9 @@ export const createBook = async (req: Request, res: Response) => {
                 price: numPrice,
                 stockQuantity: numStock,
                 genreId: genre_id,
-                image: image || null,           // NEW
-                isbn: isbn || null,             // NEW
-                condition: condition || null,   // NEW
+                image: image || null,
+                isbn: isbn || null,
+                condition: condition || null,
             },
             include: {
                 genre: {
@@ -93,22 +93,86 @@ export const createBook = async (req: Request, res: Response) => {
     }
 };
 
-// GET /books
+// ✅ GET /books - WITH SEARCH, FILTER, SORT & PAGINATION
 export const getAllBook = async (req: Request, res: Response) => {
     try {
+        const { 
+            search, 
+            condition, 
+            sortBy = 'title', 
+            order = 'asc',
+            page = '1',
+            limit = '10'
+        } = req.query;
+
+        // Parse pagination parameters
+        const pageNum = parseInt(page as string, 10) || 1;
+        const limitNum = parseInt(limit as string, 10) || 10;
+        const skip = (pageNum - 1) * limitNum;
+
+        // Build where clause for filtering
+        const whereClause: any = {
+            deletedAt: null
+        };
+
+        // Search filter (title, writer, or publisher)
+        if (search && typeof search === 'string' && search.trim()) {
+            whereClause.OR = [
+                { title: { contains: search, mode: 'insensitive' } },
+                { writer: { contains: search, mode: 'insensitive' } },
+                { publisher: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        // Condition filter
+        if (condition && typeof condition === 'string' && condition.trim()) {
+            whereClause.condition = condition;
+        }
+
+        // Build orderBy clause
+        let orderByClause: any = {};
+        
+        if (sortBy === 'publicationYear') {
+            orderByClause.publicationYear = order === 'desc' ? 'desc' : 'asc';
+        } else {
+            // Default to title
+            orderByClause.title = order === 'desc' ? 'desc' : 'asc';
+        }
+
+        // Get total count for pagination
+        const totalItems = await prisma.book.count({
+            where: whereClause
+        });
+
+        // Get books with filters
         const books = await prisma.book.findMany({
-            where: { deletedAt: null },
+            where: whereClause,
             include: {
                 genre: {
                     select: { id: true, name: true }
                 }
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: orderByClause,
+            skip: skip,
+            take: limitNum
         });
 
-        res.status(200).json({ success: true, message: 'Books fetched successfully', data: books });
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalItems / limitNum);
+
+        res.status(200).json({ 
+            success: true, 
+            message: 'Books fetched successfully', 
+            data: books,
+            pagination: {
+                currentPage: pageNum,
+                totalPages: totalPages,
+                totalItems: totalItems,
+                itemsPerPage: limitNum
+            }
+        });
     } catch (error: any) {
-        console.error(error);
+        console.error('Error in getAllBook:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 };
