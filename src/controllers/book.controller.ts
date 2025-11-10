@@ -5,29 +5,33 @@ import prisma from '../utils/prisma';
 // POST /books
 export const createBook = async (req: Request, res: Response) => {
     try {
+        // ✅ TERIMA CAMELCASE DARI FRONTEND
         const { 
             title, 
             writer, 
             publisher, 
-            publication_year, 
+            publicationYear,  // ✅ camelCase
             description, 
             price, 
-            stock_quantity, 
-            genre_id,
+            stockQuantity,    // ✅ camelCase
+            genreId,          // ✅ camelCase
             image,
             isbn,
             condition
         } = req.body;
 
         // 1. Validasi Field Wajib
-        if (!title || !writer || !publisher || !publication_year || !price || !stock_quantity || !genre_id) {
-            return res.status(400).json({ success: false, message: 'Required fields: title, writer, publisher, publication_year, price, stock_quantity, genre_id' });
+        if (!title || !writer || !publisher || !publicationYear || !price || stockQuantity === undefined || !genreId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Required fields: title, writer, publisher, publicationYear, price, stockQuantity, genreId' 
+            });
         }
 
         const currentYear = new Date().getFullYear();
         const numPrice = Number(price);
-        const numStock = Number(stock_quantity);
-        const numPubYear = Number(publication_year);
+        const numStock = Number(stockQuantity);
+        const numPubYear = Number(publicationYear);
 
         // 2. Validasi Tahun Publikasi
         if (numPubYear > currentYear) {
@@ -62,16 +66,17 @@ export const createBook = async (req: Request, res: Response) => {
             });
         }
 
+        // ✅ PRISMA OTOMATIS MAPPING CAMELCASE -> SNAKE_CASE DI DATABASE
         const newBook = await prisma.book.create({
             data: {
                 title,
                 writer,
                 publisher,
-                publicationYear: numPubYear,
+                publicationYear: numPubYear,  // Prisma map ke publication_year
                 description: description || null,
                 price: numPrice,
-                stockQuantity: numStock,
-                genreId: genre_id,
+                stockQuantity: numStock,      // Prisma map ke stock_quantity
+                genreId,                      // Prisma map ke genre_id
                 image: image || null,
                 isbn: isbn || null,
                 condition: condition || null,
@@ -93,7 +98,7 @@ export const createBook = async (req: Request, res: Response) => {
     }
 };
 
-// ✅ GET /books - WITH SEARCH, FILTER, SORT & PAGINATION
+// GET /books - WITH SEARCH, FILTER, SORT & PAGINATION
 export const getAllBook = async (req: Request, res: Response) => {
     try {
         const { 
@@ -105,17 +110,14 @@ export const getAllBook = async (req: Request, res: Response) => {
             limit = '10'
         } = req.query;
 
-        // Parse pagination parameters
         const pageNum = parseInt(page as string, 10) || 1;
         const limitNum = parseInt(limit as string, 10) || 10;
         const skip = (pageNum - 1) * limitNum;
 
-        // Build where clause for filtering
         const whereClause: any = {
             deletedAt: null
         };
 
-        // Search filter (title, writer, or publisher)
         if (search && typeof search === 'string' && search.trim()) {
             whereClause.OR = [
                 { title: { contains: search, mode: 'insensitive' } },
@@ -124,27 +126,22 @@ export const getAllBook = async (req: Request, res: Response) => {
             ];
         }
 
-        // Condition filter
         if (condition && typeof condition === 'string' && condition.trim()) {
             whereClause.condition = condition;
         }
 
-        // Build orderBy clause
         let orderByClause: any = {};
         
         if (sortBy === 'publicationYear') {
             orderByClause.publicationYear = order === 'desc' ? 'desc' : 'asc';
         } else {
-            // Default to title
             orderByClause.title = order === 'desc' ? 'desc' : 'asc';
         }
 
-        // Get total count for pagination
         const totalItems = await prisma.book.count({
             where: whereClause
         });
 
-        // Get books with filters
         const books = await prisma.book.findMany({
             where: whereClause,
             include: {
@@ -157,7 +154,6 @@ export const getAllBook = async (req: Request, res: Response) => {
             take: limitNum
         });
 
-        // Calculate pagination info
         const totalPages = Math.ceil(totalItems / limitNum);
 
         res.status(200).json({ 
@@ -206,28 +202,29 @@ export const getBookDetail = async (req: Request, res: Response) => {
 export const updateBook = async (req: Request, res: Response) => {
     try {
         const bookId = req.params.book_id;
+        
+        // ✅ TERIMA CAMELCASE DARI FRONTEND
         const { 
             title,
             writer,
             publisher,
-            publication_year,
+            publicationYear,  // ✅ camelCase
             description,
             price,
-            stock_quantity,
-            genre_id,
+            stockQuantity,    // ✅ camelCase
+            genreId,          // ✅ camelCase
             image,
             isbn,
             condition
         } = req.body;
 
-        // Build update data object dynamically
         const dataToUpdate: any = {};
         
         if (title !== undefined) dataToUpdate.title = title;
         if (writer !== undefined) dataToUpdate.writer = writer;
         if (publisher !== undefined) dataToUpdate.publisher = publisher;
         if (description !== undefined) dataToUpdate.description = description;
-        if (genre_id !== undefined) dataToUpdate.genreId = genre_id;
+        if (genreId !== undefined) dataToUpdate.genreId = genreId;
         if (image !== undefined) dataToUpdate.image = image;
         if (isbn !== undefined) dataToUpdate.isbn = isbn;
         if (condition !== undefined) {
@@ -252,8 +249,8 @@ export const updateBook = async (req: Request, res: Response) => {
             dataToUpdate.price = numPrice;
         }
         
-        if (stock_quantity !== undefined) {
-            const numStock = Number(stock_quantity);
+        if (stockQuantity !== undefined) {
+            const numStock = Number(stockQuantity);
             if (numStock < 0 || !Number.isInteger(numStock) || isNaN(numStock)) {
                 return res.status(400).json({ 
                     success: false, 
@@ -263,8 +260,8 @@ export const updateBook = async (req: Request, res: Response) => {
             dataToUpdate.stockQuantity = numStock;
         }
         
-        if (publication_year !== undefined) {
-            const numPubYear = Number(publication_year);
+        if (publicationYear !== undefined) {
+            const numPubYear = Number(publicationYear);
             const currentYear = new Date().getFullYear();
             if (numPubYear > currentYear) {
                 return res.status(400).json({ 
